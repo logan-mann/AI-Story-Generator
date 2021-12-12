@@ -1,6 +1,8 @@
 import React, {useState} from 'react';
 import '../Login/Login.css';
 import {registerUser} from '../../service/auth';
+import 'bootstrap/dist/css/bootstrap.css';
+
 
 
 export default function Register(props) {
@@ -23,6 +25,7 @@ export default function Register(props) {
             setError(error)
         } else {
             props.setToken(data.token);
+            props.setUser(data)
         }
     }
 
@@ -51,10 +54,10 @@ export default function Register(props) {
                     <input type="password" onChange={e => setConfirmPassword(e.target.value)}/>
                 </label>
                 <div>
-                    <button type="submit">Register</button>
+                    <button className="btn btn-primary" type="submit">Register</button>
                 </div>
             </form>
-            <button onClick={() => {props.toggleRegister()}}>Back</button>
+            <button className="btn btn-primary" onClick={() => {props.toggleRegister()}}>Back</button>
         </div>
     )
 

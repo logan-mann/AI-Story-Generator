@@ -7,9 +7,13 @@ const jwt = require("jsonwebtoken");
 const OpenAI = require('openai-api')
 const pgPool = require('./middleware/pgPool.js');
 const initializeDB = require('./initializeDB.js');
+const { verifyToken } = require('./middleware/auth.js');
+const stories = require("./middleware/stories.js");
+const { saveStory } = require('./middleware/stories.js');
+const { resolve } = require('path');
 const app = express();
 const pool = pgPool.getPool();
-
+// Set the Region 
 app.use(express.json());
 app.use(cors());
 initializeDB.start()
@@ -18,41 +22,71 @@ initializeDB.start()
 
 const openai = new OpenAI(process.env.OPENAI_KEY)
 
+
 app.post("/register", async(req, res) => {
     try {
         const {first_name, last_name, email, password} = req.body;
-
-        console.log("REQUEST", req)
-
         if (!(email && password && first_name && last_name)) {
             res.status(400).send("All input is required.");
         }
         
-        const user_res = await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase()]);
-        if (user_res.rows.length != 0) {
-            res.status(400).send("User already exists with this email.");
-        }
-
-        hashedPassword = await bcrypt.hash(password, 10);
-        await pool.query('INSERT INTO users (email, password, first_name, last_name) VALUES ($1, $2, $3, $4)', [email.toLowerCase(), hashedPassword, first_name, last_name]);
-        const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-        let user = result.rows[0];
-        const token = jwt.sign(
-            {user_id: user.user_id, email: email.toLowerCase()},
-            process.env.TOKEN_KEY,
-            {
-                expiresIn: "2h",
+        await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase()])
+        .then(async(user_res) => {
+            if (user_res.rows.length != 0) {
+                console.log("User already exists")
+                res.status(400).send("User already exists with this email.");
+                return;
             }
-        );
+    
+            await bcrypt.hash(password, 10)
+            .then(async(hashedPassword) => {
+                await pool.query('INSERT INTO users (email, password, first_name, last_name) VALUES ($1, $2, $3, $4)', [email.toLowerCase(), hashedPassword, first_name, last_name])
+                .then(async() => {
+                    await pool.query('SELECT * FROM users WHERE email = $1', [email])
+                    .then((result) => {
+                        let user = result.rows[0];
+                        const token = jwt.sign(
+                            {user_id: user.user_id, email: email.toLowerCase()},
+                            process.env.TOKEN_KEY,
+                            {
+                                expiresIn: "2h",
+                            }
+                        );
+                
+                
+                        response_body = {
+                            email: user.email,
+                            first_name: user.first_name,
+                            last_name: user.last_name,
+                            token: token
+                        }
+                        res.status(200).json(response_body);
+                    })
+                    .catch(err => {
+                        console.log("Database error: ", err.message)
+                        res.status(500).send({error: "Database error: " + err.message})
+                        return;
+                    })
 
+                })
+                .catch(err => {
+                    console.log("Database error: ", err.message)
+                    res.status(500).send({error: "Database error: " + err.message})
+                    return;
+                })
 
-        response_body = {
-            email: user.email,
-            first_name: user.first_name,
-            last_name: user.last_name,
-            token: token
-        }
-        res.status(200).json(response_body);
+            })
+            .catch(err => {
+                console.log("Error hashing password: " + err.message)
+                res.status(500).send({error: "Error hashing password: " + err.message})
+                return;
+            })
+        })
+        .catch(err => {
+            console.log("Database error: ", err.message)
+            res.status(500).send({error: "Database error: " + err.message})
+            return;
+        })
     } catch (err) {
         console.log(err);
         res.status(500).json({error: err.message});
@@ -61,6 +95,7 @@ app.post("/register", async(req, res) => {
 
 app.post('/login', async (req, res) => {
     try {
+        console.log(req.body)
         const {email, password} = req.body;
         if(!(email && password)) {
             res.status(400).send({error: "All input is required"});
@@ -96,18 +131,74 @@ app.post('/login', async (req, res) => {
         res.status(500).send({error: err});
     }
 });
+ 
+app.post('/verifyToken', async(req, res) => {
+    console.log("Validating token...")
+    await verifyToken(req)
+    .then((userData) => {
+        console.log("Token verified: ", JSON.stringify(userData))
+        res.status(200).send(userData)
+        return
+    })
+    .catch((err) => {
+        console.log("Token validation failed:", err)
+        res.status(400).send({error: "Token validation failed: " + err})
+        return
+    })
+})
 
 app.post('/generateStory', async(req,res) => {
-    const gptResponse = await openai.complete({
+    console.log("prompt", req.body.prompt)
+    openai.complete({
         "engine": "babbage",
         "prompt": req.body.prompt,
-        "temperature": 0.29,
+        "temperature": 0.25,
         "max_tokens": 64,
         "top_p": 1,
         "frequency_penalty":100,
         "presence_penalty": 0
       })
-      console.log(gptResponse.data)
+      .then(gptResponse => gptResponse.data)
+      .then(data => {
+          console.log(data)
+          res.status(200).send({text: data.choices[0].text})
+      })
+      .catch(err => {
+          console.log("Error generating text: "+ err);
+          res.status(500).send({error: "Error generating text: " + err});
+      })
+})
+
+app.post("/saveStory", async(req, res) => {
+    saveStory(req)
+    .then(() => {
+        res.status(200).send({success:"Successfully saved story!"})
+    })
+    .catch(err => {
+        res.status(400).send({error: err});
+    })
+})
+
+app.get("/topStories", async(req, res) => {
+    await stories.getTopStories()
+    .then(result => {
+        res.status(200).send(result);
+    })
+    .catch(err => {
+        console.log(err)
+        res.status(500).send({error: "Error retrieving stories."})
+    })
+})
+
+app.post("/submitRating", async(req, res) => {
+    stories.submitRating(req)
+    .then(() => {
+        res.status(200).send({success:"Successfully submitted rating!"})
+    })
+    .catch(err => {
+        console.log(err)
+        res.status(400).send({error: err})
+    })
 })
 
 app.listen(8080, () => console.log("Backend API running on http://localhost:8080"));
