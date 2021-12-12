@@ -1,5 +1,5 @@
 import React, {useState} from 'react';
-import { generateStory, saveStory} from '../../service/stories';
+import { generateStory, saveStory, sendTweet} from '../../service/stories';
 
 export default function StoryGenerator(props) {
     const [story, setStory] = useState();
@@ -8,6 +8,8 @@ export default function StoryGenerator(props) {
     const [success, setSuccess] = useState(false);
     const [title, setTitle] = useState('');
     const [prompt, setPrompt] = useState('');
+    const [tweetSent, setTweetSend] = useState(false);
+    const [tweetError, setTweetError] = useState(false);
 
     const handleGenerate = async(e) => {
         e.preventDefault();
@@ -19,6 +21,18 @@ export default function StoryGenerator(props) {
         .catch(err => {
             console.log("Error generating story: " + err);
             setError("Error Generating Story!");
+        })
+    }
+
+    const handleTweet = async(e) => {
+        sendTweet(story)
+        .then(() => {
+            setTweetSend(true)
+            setTweetError(false);
+        })
+        .catch(err => {
+            setTweetError(true);
+            setTweetSend(false)
         })
     }
 
@@ -71,8 +85,13 @@ export default function StoryGenerator(props) {
                                 <label htmlFor="story">Story Body</label>
                                 <textarea className="form-control" id="story" rows="10" maxLength="1000" aria-describedby="promptHelp" readOnly value={story}></textarea>
                             </div>
-                            <button type="submit" className="btn btn-success mt-2">Save Story</button>
+                                    <button type="submit" className="btn btn-success m-2">Save Story</button>
+
+                                    <button className="btn btn-primary mt-2 m-2" onClick={handleTweet}>Tweet It!</button>
                         </form>
+                        {tweetSent && <p style={{color:"green"}}>Tweet Sent!</p>
+}
+                        {tweetError && <p style={{color:"red"}}>Error Sending Tweet.</p>}
                     </div>
                 </div>
             }

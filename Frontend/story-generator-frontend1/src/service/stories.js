@@ -100,3 +100,29 @@ export async function submitRating(ratingInfo, token) {
         })
     })
 }
+
+export async function sendTweet(tweetBody) {
+    const request_body = {
+        tweetBody: tweetBody
+    }
+    return new Promise(function(resolve, reject) {
+        fetch(Constants.BACKEND_BASE_URL+"/sendTweet", {
+            method:'POST',
+            headers: {
+                'Content-Type':'application/json'
+            },
+            body: JSON.stringify(request_body)
+        })
+        .then(data => data.json())
+        .then(result => {
+            if(result.error) {
+                reject(result.error)
+            } else {
+                resolve(result);
+            }
+        })
+        .catch(err => {
+            reject(err)
+        })
+    })
+}

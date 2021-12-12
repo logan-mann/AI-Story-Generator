@@ -10,9 +10,9 @@ const initializeDB = require('./initializeDB.js');
 const { verifyToken } = require('./middleware/auth.js');
 const stories = require("./middleware/stories.js");
 const { saveStory } = require('./middleware/stories.js');
-const { resolve } = require('path');
 const app = express();
 const pool = pgPool.getPool();
+const twitterQueue = require('./middleware/twitterQueue.js')
 // Set the Region 
 app.use(express.json());
 app.use(cors());
@@ -198,6 +198,18 @@ app.post("/submitRating", async(req, res) => {
     .catch(err => {
         console.log(err)
         res.status(400).send({error: err})
+    })
+})
+
+app.post("/sendTweet", async(req, res) => {
+    twitterQueue.sendTweet(req.body.tweetBody)
+    .then((result) => {
+        console.log(result)
+        res.status(200).send(result)
+    })
+    .catch(err => {
+        console.log(err)
+        res.status(500).send({error: err})
     })
 })
 
